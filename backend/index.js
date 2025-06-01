@@ -17,6 +17,32 @@ mongoose.connect('mongodb://localhost:27017/hackathon-timer', {
   console.error('MongoDB connection error:', err);
 });
 
+// Notes Schema
+const noteSchema = new mongoose.Schema({
+  roomId: String,
+  username: String,
+  content: String,
+  timestamp: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Note = mongoose.model('Note', noteSchema);
+
+// Message Schema
+const messageSchema = new mongoose.Schema({
+  roomId: String,
+  username: String,
+  message: String,
+  timestamp: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Message = mongoose.model('Message', messageSchema);
+
 // Timer Schema
 const timerSchema = new mongoose.Schema({
   roomId: String,
@@ -43,7 +69,8 @@ const io = socketIo(server, {
 });
 
 // Store active rooms and their users
-const rooms = new Map();
+const rooms = new Map(); // roomId -> Map<socketId, username>
+const usernames = new Map(); // roomId -> Set<username>
 
 app.get('/', (req, res) => {
   res.send('Hello World!');
@@ -96,84 +123,177 @@ io.on('connection', (socket) => {
     socket.emit('test_response', { message: 'Hello from server!' });
   });
 
-  socket.on('createRoom', async (roomId) => {
-    console.log(`Room created: ${roomId} by user: ${socket.id}`);
-    rooms.set(roomId, new Set());
-    socket.join(roomId);
-    
-    const timer = await createTimer(roomId, socket.id);
-    if (timer) {
-      io.to(roomId).emit('timer:update', timer);
-    }
-  });
-
-  socket.on('joinRoom', async (roomId) => {
-    console.log(`User ${socket.id} joined room: ${roomId}`);
-    socket.join(roomId);
+  socket.on('username:check', ({ roomId, username }) => {
+    // Initialize room structures if they don't exist
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, new Set());
+      rooms.set(roomId, new Map());
+      usernames.set(roomId, new Set());
     }
-    rooms.get(roomId).add(socket.id);
 
-    let timer = await Timer.findOne({ roomId });
-    if (!timer) {
-      timer = await createTimer(roomId, socket.id);
-    }
-    if (timer) {
-      socket.emit('timer:update', timer);
+    // Check if username is taken in the room
+    if (usernames.get(roomId).has(username)) {
+      socket.emit('username:response', {
+        valid: false,
+        message: 'Username is already taken in this room'
+      });
+    } else {
+      socket.emit('username:response', { valid: true });
     }
   });
 
-  socket.on('leaveRoom', (roomId) => {
-    console.log(`User ${socket.id} left room: ${roomId}`);
-    socket.leave(roomId);
+  socket.on('joinRoom', ({ roomId, username }) => {
+    // Check if user is already in the room
+    const existingUsername = rooms.get(roomId)?.get(socket.id);
+    if (existingUsername === username) {
+      return; // User is already in the room with the same username
+    }
+
+    // Initialize room structures if they don't exist
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, new Map());
+      usernames.set(roomId, new Set());
+    }
+
+    // Add user to room
+    socket.join(roomId);
+    rooms.get(roomId).set(socket.id, username);
+    usernames.get(roomId).add(username);
+
+    // Load previous messages
+    Message.find({ roomId })
+      .sort({ timestamp: 1 })
+      .limit(100)
+      .then(messages => {
+        socket.emit('message:history', messages);
+      })
+      .catch(err => {
+        console.error('Error loading message history:', err);
+      });
+
+    // Load notes for the room
+    Note.find({ roomId })
+      .sort({ timestamp: -1 })
+      .then(notes => {
+        socket.emit('notes:history', notes);
+      })
+      .catch(err => {
+        console.error('Error loading notes:', err);
+      });
+
+    // Get or create timer for room
+    Timer.findOne({ roomId }).then(timer => {
+      if (!timer) {
+        createTimer(roomId, socket.id).then(newTimer => {
+          socket.emit('timer:update', newTimer);
+        });
+      } else {
+        socket.emit('timer:update', timer);
+      }
+    });
+
+    // Save and emit join message
+    const systemMessage = new Message({
+      roomId,
+      username: 'System',
+      message: `${username} has joined the room`,
+      timestamp: new Date()
+    });
+    
+    systemMessage.save()
+      .then(() => {
+        io.to(roomId).emit('message', systemMessage);
+      })
+      .catch(err => console.error('Error saving system message:', err));
+  });
+
+  socket.on('leaveRoom', ({ roomId, username }) => {
     if (rooms.has(roomId)) {
+      // Remove user from room
       rooms.get(roomId).delete(socket.id);
+      usernames.get(roomId).delete(username);
+
+      // Clean up room if empty
       if (rooms.get(roomId).size === 0) {
         rooms.delete(roomId);
+        usernames.delete(roomId);
+      } else {
+        // Save and emit leave message
+        const systemMessage = new Message({
+          roomId,
+          username: 'System',
+          message: `${username} has left the room`,
+          timestamp: new Date()
+        });
+        
+        systemMessage.save()
+          .then(() => {
+            io.to(roomId).emit('message', systemMessage);
+          })
+          .catch(err => console.error('Error saving system message:', err));
       }
     }
+    socket.leave(roomId);
   });
 
-  socket.on('message', ({ roomId, message }) => {
-    io.to(roomId).emit('message', {
-      user: socket.id,
-      message: message
+  socket.on('message', async ({ roomId, message, username }) => {
+    console.log(`New message in room ${roomId} from ${username}:`, message);
+    
+    // Create and save the message
+    const newMessage = new Message({
+      roomId,
+      username,
+      message,
+      timestamp: new Date()
     });
+
+    try {
+      await newMessage.save();
+      console.log('Message saved successfully:', newMessage);
+      
+      // Broadcast the message to all users in the room
+      io.to(roomId).emit('message', {
+        username,
+        message,
+        timestamp: newMessage.timestamp
+      });
+    } catch (err) {
+      console.error('Error saving message:', err);
+      socket.emit('message:error', { error: 'Failed to save message' });
+    }
   });
 
   // Timer events
   socket.on('timer:set', async ({ roomId, totalSeconds }) => {
-    console.log(`Setting timer for room: ${roomId} to ${totalSeconds} seconds`);
+    const username = rooms.get(roomId)?.get(socket.id);
     const timer = await updateTimer(roomId, {
       status: 'paused',
       remainingTime: totalSeconds,
       startTime: null,
-      lastUpdateBy: socket.id
+      lastUpdateBy: username || socket.id
     });
     
     if (timer) {
-      await addTimerLog(roomId, 'set timer', socket.id);
+      await addTimerLog(roomId, 'set timer', username || socket.id);
       io.to(roomId).emit('timer:update', timer);
     }
   });
 
   socket.on('timer:start', async ({ roomId }) => {
-    console.log(`Timer start requested for room: ${roomId} by user: ${socket.id}`);
+    const username = rooms.get(roomId)?.get(socket.id);
     const timer = await updateTimer(roomId, {
       status: 'running',
       startTime: new Date(),
-      lastUpdateBy: socket.id
+      lastUpdateBy: username || socket.id
     });
     
     if (timer) {
-      await addTimerLog(roomId, 'started timer', socket.id);
+      await addTimerLog(roomId, 'started timer', username || socket.id);
       io.to(roomId).emit('timer:update', timer);
     }
   });
 
   socket.on('timer:pause', async ({ roomId }) => {
-    console.log(`Timer pause requested for room: ${roomId} by user: ${socket.id}`);
+    const username = rooms.get(roomId)?.get(socket.id);
     const timer = await Timer.findOne({ roomId });
     if (timer && timer.status === 'running') {
       const now = new Date();
@@ -184,11 +304,11 @@ io.on('connection', (socket) => {
         status: 'paused',
         remainingTime: remaining,
         startTime: null,
-        lastUpdateBy: socket.id
+        lastUpdateBy: username || socket.id
       });
       
       if (updatedTimer) {
-        await addTimerLog(roomId, 'paused timer', socket.id);
+        await addTimerLog(roomId, 'paused timer', username || socket.id);
         io.to(roomId).emit('timer:update', updatedTimer);
       }
     }
@@ -209,27 +329,76 @@ io.on('connection', (socket) => {
   });
 
   socket.on('timer:reset', async ({ roomId }) => {
-    console.log(`Timer reset requested for room: ${roomId} by user: ${socket.id}`);
+    const username = rooms.get(roomId)?.get(socket.id);
     const timer = await updateTimer(roomId, {
       status: 'paused',
       remainingTime: 0,
       startTime: null,
-      lastUpdateBy: socket.id
+      lastUpdateBy: username || socket.id
     });
     
     if (timer) {
-      await addTimerLog(roomId, 'reset timer', socket.id);
+      await addTimerLog(roomId, 'reset timer', username || socket.id);
       io.to(roomId).emit('timer:update', timer);
     }
   });
 
+  // Notes events
+  socket.on('note:add', async ({ roomId, username, content }) => {
+    const newNote = new Note({
+      roomId,
+      username,
+      content,
+      timestamp: new Date()
+    });
+
+    try {
+      await newNote.save();
+      io.to(roomId).emit('note:added', newNote);
+    } catch (err) {
+      console.error('Error saving note:', err);
+      socket.emit('note:error', { error: 'Failed to save note' });
+    }
+  });
+
+  socket.on('note:delete', async ({ roomId, noteId, username }) => {
+    try {
+      const note = await Note.findById(noteId);
+      if (note && note.username === username) {
+        await Note.findByIdAndDelete(noteId);
+        io.to(roomId).emit('note:deleted', { noteId });
+      }
+    } catch (err) {
+      console.error('Error deleting note:', err);
+      socket.emit('note:error', { error: 'Failed to delete note' });
+    }
+  });
+
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    // Clean up user from all rooms they were in
     rooms.forEach((users, roomId) => {
       if (users.has(socket.id)) {
+        const username = users.get(socket.id);
         users.delete(socket.id);
+        usernames.get(roomId).delete(username);
+        
         if (users.size === 0) {
           rooms.delete(roomId);
+          usernames.delete(roomId);
+        } else {
+          // Save and emit disconnect message
+          const systemMessage = new Message({
+            roomId,
+            username: 'System',
+            message: `${username} has disconnected`,
+            timestamp: new Date()
+          });
+          
+          systemMessage.save()
+            .then(() => {
+              io.to(roomId).emit('message', systemMessage);
+            })
+            .catch(err => console.error('Error saving system message:', err));
         }
       }
     });
