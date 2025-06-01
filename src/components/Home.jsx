@@ -8,6 +8,7 @@ function Home() {
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [pendingRoomId, setPendingRoomId] = useState(null);
+  const [showRoomError, setShowRoomError] = useState(false);
   const navigate = useNavigate();
 
   const createRoom = () => {
@@ -16,12 +17,35 @@ function Home() {
     setShowUsernamePrompt(true);
   };
 
-  const joinRoom = (e) => {
-    e.preventDefault();
-    if (roomId.trim()) {
-      setPendingRoomId(roomId.trim());
-      setShowUsernamePrompt(true);
+  const checkRoomExists = async (roomId) => {
+    try {
+      const response = await fetch(`http://localhost:3000/room/${roomId}/exists`);
+      if (!response.ok) {
+        throw new Error('Failed to check room status');
+      }
+      const { exists } = await response.json();
+      return exists;
+    } catch (error) {
+      console.error('Room check error:', error);
+      return false;
     }
+  };
+
+  const joinRoom = async (e) => {
+    e.preventDefault();
+    if (!roomId.trim()) return;
+
+    const trimmedRoomId = roomId.trim();
+    const roomExists = await checkRoomExists(trimmedRoomId);
+
+    if (!roomExists) {
+      setShowRoomError(true);
+      setTimeout(() => setShowRoomError(false), 3000); // Hide error after 3 seconds
+      return;
+    }
+
+    setPendingRoomId(trimmedRoomId);
+    setShowUsernamePrompt(true);
   };
 
   const handleUsernameSubmit = (e) => {
@@ -63,13 +87,20 @@ function Home() {
             <div className="text-center mb-4 text-gray-500">OR</div>
 
             <form onSubmit={joinRoom} className="space-y-4">
-              <input
-                type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                placeholder="Enter Room ID"
-                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div>
+                <input
+                  type="text"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}
+                  placeholder="Enter Room ID"
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showRoomError && (
+                  <p className="text-red-500 text-sm mt-2">
+                    Room not found. Please check the Room ID or create a new room.
+                  </p>
+                )}
+              </div>
               <button
                 type="submit"
                 className="w-full bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300"
