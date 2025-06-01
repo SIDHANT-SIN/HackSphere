@@ -1,137 +1,104 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import socket from '../socket';
 
 function Room() {
   const { roomId } = useParams();
-  const [time, setTime] = useState(48 * 60 * 60); // 48 hours in seconds
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [notes, setNotes] = useState('');
+  const [time, setTime] = useState(48 * 60 * 60); // 48 hours in seconds
 
-  // Timer functionality
   useEffect(() => {
-    let interval;
-    if (isTimerRunning && time > 0) {
-      interval = setInterval(() => {
-        setTime((prevTime) => prevTime - 1);
-      }, 1000);
+    // Join room when component mounts
+    socket.emit('joinRoom', roomId);
+
+    // Listen for messages
+    socket.on('message', (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
+    // Listen for timer updates
+    socket.on('timerUpdate', (remainingTime) => {
+      setTime(remainingTime);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socket.off('message');
+      socket.off('timerUpdate');
+      socket.emit('leaveRoom', roomId);
+    };
+  }, [roomId]);
+
+  const sendMessage = (e) => {
+    e.preventDefault();
+    if (message.trim()) {
+      socket.emit('message', { roomId, message });
+      setMessage('');
     }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, time]);
+  };
+
+  const startTimer = () => {
+    socket.emit('timerStart', roomId);
+  };
+
+  const pauseTimer = () => {
+    socket.emit('timerPause', roomId);
+  };
+
+  const resetTimer = () => {
+    socket.emit('timerReset', roomId);
+  };
 
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes
-      .toString()
-      .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (newMessage.trim()) {
-      setMessages([
-        ...messages,
-        {
-          id: Date.now(),
-          text: newMessage,
-          sender: 'You',
-          timestamp: new Date().toLocaleTimeString(),
-        },
-      ]);
-      setNewMessage('');
-    }
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Room: {roomId}</h1>
-          <p className="text-gray-600">Share this room ID with your team members to collaborate.</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Timer Section */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Hackathon Timer</h2>
-            <div className="text-4xl font-mono text-center mb-4">{formatTime(time)}</div>
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className={`px-4 py-2 rounded-md ${
-                  isTimerRunning ? 'bg-red-600' : 'bg-green-600'
-                } text-white`}
-              >
-                {isTimerRunning ? 'Pause' : 'Start'}
-              </button>
-              <button
-                onClick={() => {
-                  setIsTimerRunning(false);
-                  setTime(48 * 60 * 60);
-                }}
-                className="px-4 py-2 rounded-md bg-gray-600 text-white"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-
-          {/* Chat Section */}
-          <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-2">
-            <h2 className="text-xl font-semibold mb-4">Team Chat</h2>
-            <div className="h-96 overflow-y-auto mb-4 p-4 border rounded-lg">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`mb-4 ${
-                    message.sender === 'You' ? 'text-right' : 'text-left'
-                  }`}
-                >
-                  <div
-                    className={`inline-block rounded-lg p-3 ${
-                      message.sender === 'You'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-100'
-                    }`}
-                  >
-                    <p className="font-medium text-sm">{message.sender}</p>
-                    <p>{message.text}</p>
-                    <p className="text-xs opacity-75">{message.timestamp}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <form onSubmit={handleSendMessage} className="flex space-x-4">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-              >
-                Send
-              </button>
-            </form>
-          </div>
-
-          {/* Shared Notes Section */}
-          <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-3">
-            <h2 className="text-xl font-semibold mb-4">Shared Notes</h2>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Type your team notes here..."
-              className="w-full h-64 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Room: {roomId}</h1>
+        
+        {/* Timer Section */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+          <h2 className="text-xl font-semibold mb-2">Timer</h2>
+          <div className="text-3xl font-mono text-center mb-2">{formatTime(time)}</div>
+          <div className="flex justify-center space-x-2">
+            <button onClick={startTimer} className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start</button>
+            <button onClick={pauseTimer} className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">Pause</button>
+            <button onClick={resetTimer} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Reset</button>
           </div>
         </div>
+
+        {/* Messages Area */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4 h-96 overflow-y-auto">
+          {messages.map((msg, index) => (
+            <div key={index} className="mb-2">
+              <span className="font-semibold">{msg.user}: </span>
+              <span>{msg.message}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Message Input */}
+        <form onSubmit={sendMessage} className="flex gap-2">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 p-2 border rounded"
+          />
+          <button
+            type="submit"
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          >
+            Send
+          </button>
+        </form>
       </div>
     </div>
   );
