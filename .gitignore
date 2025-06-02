@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Editor needed
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
