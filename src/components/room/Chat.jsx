@@ -7,7 +7,7 @@ const Chat = () => {
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (newMessage.trim()) {
-      // In a real app, this would be handled by Socket.IO
+      // socket.io handling
       const message = {
         id: Date.now(),
         text: newMessage,

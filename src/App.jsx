@@ -8,7 +8,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Connection event handlers
+  
     socket.on('connect', () => {
       console.log('Connected to server');
       setIsConnected(true);
@@ -19,7 +19,6 @@ function App() {
       setIsConnected(false);
     });
 
-    // Cleanup on component unmount
     return () => {
       socket.off('connect');
       socket.off('disconnect');
