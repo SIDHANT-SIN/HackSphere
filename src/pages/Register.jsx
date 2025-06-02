@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 
 const Register = () => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     // registration not done
-    console.log('Register attempt:', formData);
+    console.log("Register attempt:", formData);
   };
 
   const handleChange = (e) => {
@@ -118,4 +118,4 @@ const Register = () => {
   );
 };
 
-export default Register; 
+export default Register;

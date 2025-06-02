@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 
 const Login = () => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+    email: "",
+    password: "",
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     // login not done yet
-    console.log('Login attempt:', formData);
+    console.log("Login attempt:", formData);
   };
 
   const handleChange = (e) => {
@@ -86,4 +86,4 @@ const Login = () => {
   );
 };
 
-export default Login; 
+export default Login;
