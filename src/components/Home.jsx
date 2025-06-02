@@ -51,14 +51,17 @@ function Home() {
   const handleUsernameSubmit = (e) => {
     e.preventDefault();
     if (!username.trim()) {
-      setUsernameError('Username cannot be empty');
+      setUsernameError("Username cannot be empty");
       return;
     }
-
-    // join room 
-    socket.emit('joinRoom', {
+    // stores username in localStorage
+    localStorage.setItem("username", username.trim());
+    localStorage.setItem("roomId", pendingRoomId);
+    
+    // join room
+    socket.emit("joinRoom", {
       roomId: pendingRoomId,
-      username: username.trim()
+      username: username.trim(),
     });
 
     navigate(`/room/${pendingRoomId}`);
