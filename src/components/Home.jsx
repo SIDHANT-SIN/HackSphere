@@ -55,10 +55,6 @@ function Home() {
       return;
     }
 
-    // stores username in localStorage
-    localStorage.setItem('username', username.trim());
-    localStorage.setItem('roomId', pendingRoomId);
-
     // join room 
     socket.emit('joinRoom', {
       roomId: pendingRoomId,
