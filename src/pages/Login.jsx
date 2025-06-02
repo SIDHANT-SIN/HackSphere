@@ -9,7 +9,7 @@ const Login = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // TODO: Implement login logic
+    // login not done yet
     console.log('Login attempt:', formData);
   };
 

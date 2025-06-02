@@ -15,7 +15,7 @@ socket.on('connect', () => {
   console.log('Connected to server');
 });
 
-socket.on('disconnect', (reason) => {
+socket.on('disconnect',  (reason) => {
   console.log('Disconnected from server:', reason);
 });
 

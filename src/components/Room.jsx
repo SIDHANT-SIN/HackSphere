@@ -9,7 +9,7 @@ function Room() {
   const [messages, setMessages] = useState([]);
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
-  const [time, setTime] = useState(48 * 60 * 60); // 48 hours in seconds
+  const [time, setTime] = useState(48 * 60 * 60); 
   const [hours, setHours] = useState('');
   const [minutes, setMinutes] = useState('');
   const [seconds, setSeconds] = useState('');
@@ -21,7 +21,6 @@ function Room() {
   const [showRoomAlert, setShowRoomAlert] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Check if room exists
   const checkRoomExists = async () => {
     try {
       const response = await fetch(`http://localhost:3000/room/${roomId}/exists`);
@@ -36,14 +35,11 @@ function Room() {
     }
   };
 
-  // Function to filter out redundant system messages
   const addMessageWithFilter = (newMsg, currentMessages) => {
-    // If it's not a system message, just add it
+
     if (newMsg.username !== 'System') {
       return [...currentMessages, newMsg];
     }
-
-    // For system messages, check if it's a redundant join/leave message
     const lastMsg = currentMessages[currentMessages.length - 1];
     if (lastMsg && lastMsg.username === 'System') {
       const isRedundantJoin = 
@@ -57,7 +53,7 @@ function Room() {
         newMsg.message.split(' ')[0] === lastMsg.message.split(' ')[0];
 
       if (isRedundantJoin || isRedundantLeave) {
-        // Replace the last message instead of adding a new one
+        // replace the last message instead of adding a new one, current error with double messaging
         return [...currentMessages.slice(0, -1), newMsg];
       }
     }
@@ -76,17 +72,15 @@ function Room() {
   };
 
   useEffect(() => {
-    // Check if we have username and roomId in localStorage
+    // check username and roomid in localStorage
     const storedUsername = localStorage.getItem('username');
     const storedRoomId = localStorage.getItem('roomId');
 
     if (!storedUsername || !storedRoomId || storedRoomId !== roomId) {
-      // If no username or wrong room, redirect to home
       navigate('/');
       return;
     }
 
-    // Check if room exists before joining
     const joinRoom = async () => {
       const roomExists = await checkRoomExists();
       
@@ -96,8 +90,7 @@ function Room() {
       }
 
       setUsername(storedUsername);
-      
-      // Set up socket listeners
+     
       socket.on('room:joined', ({ isNewRoom: newRoom }) => {
         setIsNewRoom(newRoom);
         if (newRoom) {
@@ -116,7 +109,6 @@ function Room() {
       });
 
       socket.on('message:history', (history) => {
-        // Filter out redundant system messages from history
         const filteredHistory = history.reduce((acc, msg) => {
           return addMessageWithFilter(msg, acc);
         }, []);
@@ -165,7 +157,7 @@ function Room() {
         }
       });
 
-      // Join the room
+   
       socket.emit('joinRoom', {
         roomId,
         username: storedUsername
@@ -174,7 +166,7 @@ function Room() {
 
     joinRoom();
 
-    // Cleanup function
+    // manual cleanup :<
     return () => {
       socket.off('room:joined');
       socket.off('joinRoom:error');
@@ -250,7 +242,6 @@ function Room() {
     navigate('/');
   };
 
-  // Format timestamp
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
@@ -287,7 +278,7 @@ function Room() {
 
   const handleFileDownload = async (fileId, originalName) => {
     try {
-      // First get the file download URL
+      // file download URL
       const urlResponse = await fetch(`http://localhost:3000/file/url/${fileId}`, {
         method: 'GET',
         headers: {
@@ -308,7 +299,7 @@ function Room() {
 
       const { downloadUrl } = await urlResponse.json();
       
-      // Now download the file using the URL
+      // downloading 
       const downloadResponse = await fetch(`http://localhost:3000${downloadUrl}`, {
         method: 'GET',
         headers: {
@@ -326,16 +317,14 @@ function Room() {
         throw new Error(errorData.error);
       }
 
-      // Get total file size for progress calculation
+      
       const contentLength = downloadResponse.headers.get('Content-Length');
       const total = parseInt(contentLength, 10);
       
-      // Create a ReadableStream to track download progress
       const reader = downloadResponse.body.getReader();
       const chunks = [];
       let receivedLength = 0;
 
-      // Process the stream chunks
       while(true) {
         const { done, value } = await reader.read();
         
@@ -344,14 +333,12 @@ function Room() {
         chunks.push(value);
         receivedLength += value.length;
         
-        // Calculate and update progress
         if (total) {
           const progress = (receivedLength / total) * 100;
-          setUploadProgress(progress); // Reuse upload progress state for downloads
+          setUploadProgress(progress); 
         }
       }
 
-      // Concatenate chunks into a single Uint8Array
       const chunksAll = new Uint8Array(receivedLength);
       let position = 0;
       for (const chunk of chunks) {
@@ -359,7 +346,6 @@ function Room() {
         position += chunk.length;
       }
 
-      // Create blob and trigger download
       const blob = new Blob([chunksAll], { 
         type: downloadResponse.headers.get('Content-Type') || 'application/octet-stream' 
       });
@@ -369,11 +355,9 @@ function Room() {
       link.download = originalName;
       document.body.appendChild(link);
       link.click();
-      
-      // Reset progress
+
       setUploadProgress(null);
-      
-      // Cleanup
+
       setTimeout(() => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
@@ -390,7 +374,7 @@ function Room() {
     const file = e.target.files[0];
     if (!file) return;
 
-    const maxSize = 50 * 1024 * 1024; // 50MB limit
+    const maxSize = 50 * 1024 * 1024; 
     if (file.size > maxSize) {
       alert('File size must be less than 50MB');
       return;
@@ -439,50 +423,42 @@ function Room() {
         fullResult: result
       });
 
-      // Create a standardized file object using the correct ID
       const newFile = {
-        _id: result.fileId || result._id, // Use fileId or _id as the primary identifier
+        _id: result.fileId || result._id, 
         originalName: result.originalName || file.name,
         filename: result.filename,
         size: result.size || file.size,
         uploadedBy: result.uploadedBy || username,
         uploadDate: result.uploadDate || new Date().toISOString(),
         mimetype: result.mimetype || file.type,
-        downloadUrl: result.downloadUrl // Store download URL if provided
+        downloadUrl: result.downloadUrl 
       };
 
-      // Update UI with the new file
       setFiles(prev => {
-        // Remove any existing file with the same ID to prevent duplicates
         const filtered = prev.filter(f => f._id !== newFile._id);
         return [newFile, ...filtered];
       });
 
       setUploadProgress(100);
-      
-      // Clear the file input
+   
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
 
-      // Reset progress after a delay
       setTimeout(() => setUploadProgress(null), 1000);
 
-      // Notify success via socket
       socket.emit('file:uploaded', {
         fileId: newFile._id,
         roomId,
         username
       });
 
-      // Show success message
       alert('File uploaded successfully!');
 
     } catch (error) {
       console.error('Upload error:', error);
       setUploadProgress(null);
-      
-      // Clear the file input
+ 
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -504,7 +480,6 @@ function Room() {
         }
       });
 
-      // Log the response status for debugging
       console.log('Delete response status:', response.status);
 
       if (!response.ok) {
@@ -524,11 +499,9 @@ function Room() {
       }
 
       console.log('File deleted successfully');
-      
-      // Update the files list
+  
       setFiles(prev => prev.filter(file => file._id !== fileId));
       
-      // Notify others via socket
       socket.emit('file:deleted', {
         fileId,
         roomId,
@@ -541,7 +514,6 @@ function Room() {
     }
   };
 
-  // Add upload progress tracking
   useEffect(() => {
     socket.on('upload:progress', (progress) => {
       setUploadProgress(progress);
@@ -552,7 +524,6 @@ function Room() {
     };
   }, []);
 
-  // Add file list update listener
   useEffect(() => {
     socket.on('files:update', (updatedFiles) => {
       setFiles(updatedFiles);
@@ -563,7 +534,7 @@ function Room() {
     };
   }, []);
 
-  // Room alert modal
+ 
   const RoomAlert = () => (
     <div className="fixed inset-0 flex items-center justify-center z-50">
       <div className="absolute inset-0 bg-black opacity-50"></div>

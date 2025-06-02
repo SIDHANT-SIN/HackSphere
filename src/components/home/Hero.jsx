@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const Hero = () => {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); 
   const [roomId, setRoomId] = useState('');
 
   const handleCreateRoom = () => {
-    // Generate a random room ID (in a real app, this would be handled by the backend)
-    const newRoomId = Math.random().toString(36).substring(2, 8);
+    // random room ID generation
+    const   newRoomId = Math.random().toString(36).substring(2, 8);
     navigate(`/room/${newRoomId}`);
   };
 
