@@ -1,56 +1,158 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import socket from '../socket';
 
 function Home() {
   const [roomId, setRoomId] = useState('');
+  const [username, setUsername] = useState('');
+  const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [pendingRoomId, setPendingRoomId] = useState(null);
+  const [showRoomError, setShowRoomError] = useState(false);
   const navigate = useNavigate();
 
   const createRoom = () => {
     const newRoomId = Math.random().toString(36).substring(7);
-    socket.emit('createRoom', newRoomId);
-    navigate(`/room/${newRoomId}`);
+    setPendingRoomId(newRoomId);
+    setShowUsernamePrompt(true);
   };
 
-  const joinRoom = (e) => {
-    e.preventDefault();
-    if (roomId.trim()) {
-      socket.emit('joinRoom', roomId);
-      navigate(`/room/${roomId}`);
+  const checkRoomExists = async (roomId) => {
+    try {
+      const response = await fetch(`http://localhost:3000/room/${roomId}/exists`);
+      if (!response.ok) {
+        throw new Error('Failed to check room status');
+      }
+      const { exists } = await response.json();
+      return exists;
+    } catch (error) {
+      console.error('Room check error:', error);
+      return false;
     }
+  };
+
+  const joinRoom = async (e) => {
+    e.preventDefault();
+    if (!roomId.trim()) return;
+
+    const trimmedRoomId = roomId.trim();
+    const roomExists = await checkRoomExists(trimmedRoomId);
+
+    if (!roomExists) {
+      setShowRoomError(true);
+      setTimeout(() => setShowRoomError(false), 3000); // Hide error after 3 seconds
+      return;
+    }
+
+    setPendingRoomId(trimmedRoomId);
+    setShowUsernamePrompt(true);
+  };
+
+  const handleUsernameSubmit = (e) => {
+    e.preventDefault();
+    if (!username.trim()) {
+      setUsernameError('Username cannot be empty');
+      return;
+    }
+
+    // Store username in localStorage for persistence
+    localStorage.setItem('username', username.trim());
+    localStorage.setItem('roomId', pendingRoomId);
+
+    // Join room with username
+    socket.emit('joinRoom', {
+      roomId: pendingRoomId,
+      username: username.trim()
+    });
+
+    // Navigate to room
+    navigate(`/room/${pendingRoomId}`);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-        <h1 className="text-4xl font-bold text-center mb-4 text-gray-800">Welcome to the Hackathon Collaboration Platform</h1>
-        <p className="text-center mb-8 text-gray-600">A real-time collaboration platform for hackathon teams with features like room-based timers, shared notes, live chat, file uploads, and daily logs.</p>
-        
+        {!showUsernamePrompt ? (
+          <>
+            <h1 className="text-4xl font-bold text-center mb-4 text-gray-800">Welcome to the Hackathon Timer</h1>
+            <p className="text-center mb-8 text-gray-600">Create a new room or join an existing one to collaborate with your team.</p>
+            
             <button 
-          onClick={createRoom}
-          className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg mb-4 hover:bg-blue-600 transition duration-300"
+              onClick={createRoom}
+              className="w-full bg-blue-500 text-white py-3 px-4 rounded-lg mb-4 hover:bg-blue-600 transition duration-300"
             >
-          Create New Room
+              Create New Room
             </button>
 
-        <div className="text-center mb-4 text-gray-500">OR</div>
+            <div className="text-center mb-4 text-gray-500">OR</div>
 
-        <form onSubmit={joinRoom} className="space-y-4">
-              <input
-                type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-            placeholder="Enter Room ID"
-            className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <form onSubmit={joinRoom} className="space-y-4">
+              <div>
+                <input
+                  type="text"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}
+                  placeholder="Enter Room ID"
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showRoomError && (
+                  <p className="text-red-500 text-sm mt-2">
+                    Room not found. Please check the Room ID or create a new room.
+                  </p>
+                )}
+              </div>
               <button
-            type="submit"
-            className="w-full bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300"
+                type="submit"
+                className="w-full bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300"
               >
                 Join Room
               </button>
-        </form>
-        </div>
+            </form>
+          </>
+        ) : (
+          <div>
+            <h2 className="text-2xl font-bold text-center mb-6">Join Room: {pendingRoomId}</h2>
+            <form onSubmit={handleUsernameSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Choose a Username
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  maxLength={20}
+                />
+                {usernameError && (
+                  <p className="text-red-500 text-sm mt-1">{usernameError}</p>
+                )}
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-500 text-white py-3 px-4 rounded-lg hover:bg-blue-600 transition duration-300"
+                >
+                  Join Room
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUsernamePrompt(false);
+                    setPendingRoomId(null);
+                    setUsername('');
+                    setUsernameError('');
+                  }}
+                  className="flex-1 bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 transition duration-300"
+                >
+                  Back
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
